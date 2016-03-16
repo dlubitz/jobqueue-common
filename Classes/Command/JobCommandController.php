@@ -39,16 +39,28 @@ class JobCommandController extends CommandController
      *
      * @param string $queueName The name of the queue
      * @param integer $limit The max number of jobs that should execute before exiting.
+     * @param integer $maxTime The max time that jobs should be execute before exiting.
      * @return void
      */
-    public function workCommand($queueName, $limit = 0)
+    public function workCommand($queueName, $limit = 0, $maxTime = 0)
     {
-        $runInfiniteJobs = ($limit === 0 || $limit < 0);
+        $hasLimit = ($limit > 0);
+        $hasMaxTime = ($maxTime > 0);
+        $runInfiniteJobs = !$hasLimit && !$hasMaxTime;
+
+        if ($hasMaxTime) {
+            $endTime = new \DateTime(sprintf('now +%d seconds', $maxTime));
+        }
+
         $jobsDone = 0;
         do {
             try {
                 $jobsDone++;
-                $this->jobManager->waitAndExecute($queueName);
+                $timeout = null;
+                if ($hasMaxTime) {
+                    $timeout = $endTime->getTimestamp() - (new \DateTime())->getTimestamp();
+                }
+                $this->jobManager->waitAndExecute($queueName, $timeout);
             } catch (JobQueueException $exception) {
                 $this->outputLine($exception->getMessage());
                 if ($exception->getPrevious() instanceof \Exception) {
@@ -57,7 +69,15 @@ class JobCommandController extends CommandController
             } catch (\Exception $exception) {
                 $this->outputLine('Unexpected exception during job execution: %s', array($exception->getMessage()));
             }
-        } while ($runInfiniteJobs || $jobsDone < $limit);
+
+        } while ($runInfiniteJobs
+            ||
+            (
+                (($hasLimit && $jobsDone < $limit) || !$hasLimit)
+                &&
+                (($hasMaxTime && ((new \DateTime) < $endTime)) || !$hasMaxTime)
+            )
+        );
     }
 
     /**
