@@ -62,23 +62,33 @@ class JobManager
      */
     public function waitAndExecute($queueName, $timeout = null)
     {
+        $maximumNumberOfRetries = 10;
         $queue = $this->queueManager->getQueue($queueName);
         $message = $queue->waitAndReserve($timeout);
         if ($message !== null) {
             $job = unserialize($message->getPayload());
 
+            $success = false;
+            $jobExecutionException = null;
             try {
+                $message->countExecution();
                 $success = $job->execute($queue, $message);
                 $queue->finish($message);
             } catch (\Exception $exception) {
                 $queue->finish($message);
-                throw new JobQueueException('Job execution for "' . $message->getIdentifier() . '" threw an exception', 1446806185, $exception);
+                $jobExecutionException = $exception;
             }
 
             if ($success) {
                 return $job;
             } else {
-                throw new JobQueueException('Job execution for "' . $message->getIdentifier() . '" failed', 1334056583);
+                if ($message->getExecutionCount() <= $maximumNumberOfRetries) {
+                    // Resubmit if there where less than 10 retries
+                    $queue->submit($message);
+                    throw new JobQueueException(sprintf('Job execution for "%s" failed (%d/%d trials) - Requeued', $message->getIdentifier(), $message->getExecutionCount(), $maximumNumberOfRetries), 1458147944, $jobExecutionException);
+                } else {
+                    throw new JobQueueException(sprintf('Job execution for "%s" failed (%d/%d trials) - Removed', $message->getIdentifier(), $message->getExecutionCount(), $maximumNumberOfRetries), 1458147945, $jobExecutionException);
+                }
             }
         }
 

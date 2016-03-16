@@ -43,6 +43,12 @@ class Message
     protected $payload;
 
     /**
+     * @var integer
+     */
+    protected $executionCount = 0;
+
+
+    /**
      * @var integer State of the message, one of the Message::STATE_* constants
      */
     protected $state = self::STATE_NEW;
@@ -73,7 +79,8 @@ class Message
         return array(
             'identifier' => $this->identifier,
             'payload' => $this->payload,
-            'state' => $this->state
+            'state' => $this->state,
+            'executionCount' => $this->executionCount
         );
     }
 
@@ -139,5 +146,29 @@ class Message
     public function setOriginalValue($originalValue)
     {
         $this->originalValue = $originalValue;
+    }
+
+    /**
+     * @return int
+     */
+    public function getExecutionCount()
+    {
+        return $this->executionCount;
+    }
+
+    /**
+     * @param int $executionCount
+     * @return Message
+     */
+    public function setExecutionCount($executionCount)
+    {
+        $this->executionCount = $executionCount;
+        return $this;
+    }
+
+    public function countExecution()
+    {
+        $this->setExecutionCount($this->getExecutionCount() + 1);
+        return $this;
     }
 }
